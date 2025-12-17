@@ -8,9 +8,9 @@ db_connections:
     db_type: "mysql"
     host: "127.0.0.1"
     port: 3306
-    database: "citywide"
-    username: "CitywideRds"
-    password: "citywide"
+    database: "1"
+    username: "1"
+    password: "1"
     connection_params:
       charset: "utf8mb4"
 
