@@ -1,0 +1,367 @@
+# Database Comparison Configuration
+# This file defines database comparison jobs
+
+# Reusable Database Connections
+# Define database connections once and reference them by name
+db_connections:
+  citywide_local:
+    db_type: "mysql"
+    host: "127.0.0.1"
+    port: 3306
+    database: "citywide"
+    username: "CitywideRds"
+    password: "citywide"
+    connection_params:
+      charset: "utf8mb4"
+
+  legacy_finance:
+    db_type: "postgresql"
+    host: "legacy-db.example.com"
+    port: 5432
+    database: "finance"
+    username: "finance_user"
+    password: "secure_password"
+
+  new_finance:
+    db_type: "postgresql"
+    host: "new-db.example.com"
+    port: 5432
+    database: "finance"
+    username: "finance_user"
+    password: "secure_password"
+
+  sales_mysql:
+    db_type: "mysql"
+    host: "sales-db.example.com"
+    port: 3306
+    database: "sales"
+    username: "sales_user"
+    password: "secure_password"
+
+  warehouse_mysql:
+    db_type: "mysql"
+    host: "warehouse-db.example.com"
+    port: 3306
+    database: "warehouse"
+    username: "warehouse_user"
+    password: "secure_password"
+
+  inventory_mysql:
+    db_type: "mysql"
+    host: "inventory-db.example.com"
+    port: 3306
+    database: "inventory"
+    username: "inv_user"
+    password: "secure_password"
+
+comparisons:
+  # Job 1: Compare customer data between production and staging
+  customer_comparison:
+    column_mapping:
+        email1: email  # Map email1 from data_source1 to email in data_source2
+        customer_name1: customer_name  # Map customer_name1 to customer_name
+
+    # First data source (production database)
+    data_source1:
+      name: "production"
+      connection: "citywide_local"  # Reference to db_connections
+      sql_query: |
+        SELECT 
+          customer_id,
+          customer_name as customer_name1,
+          email as email1,
+          total_purchases,
+          last_purchase_date
+        FROM customers1
+        WHERE status = 'active'
+
+    # Second data source (staging database)
+    data_source2:
+      name: "staging"
+      connection: "citywide_local"  # Reference to db_connections
+      sql_query: |
+        SELECT 
+          ext_id,
+          customer_name,
+          email,
+          total_purchases,
+          last_purchase_date
+        FROM customers2
+        WHERE status = 'active'
+
+    # Comparison configuration
+    join_columns:
+      - column: "customer_id"  # Column name after any transformations
+        source1_column: "customer_id"  # Original column in source1
+        source2_column: "ext_id"  # Original column in source2
+        source2_transform: "remove_prefix_and_int"  # Function to apply to source2 column
+
+    comparing_columns:  # Columns to compare (optional - compares all if not specified)
+      - "customer_name"
+      - "email"
+      - "total_purchases"
+      - "last_purchase_date"
+
+    tolerance:  # Tolerance for numeric columns
+      total_purchases: 0.01
+
+    # Output configuration
+    output_dir: "output/customer_comparison"
+    log_file: "customer_comparison.log"
+
+    # Report generation flags
+    generate_full_csv: true
+    generate_diff_csv: true
+    generate_summary: true
+    generate_side_by_side_excel: true
+    show_join_columns_both_sides: true  # false = show keys once (default), true = show keys on both sides
+    show_transformed_columns: true  # false = show original names (ext_id), true = show BOTH original AND transformed
+    validate_duplicates: true
+
+  # Job 2: Financial reconciliation with tolerance
+  financial_reconciliation:
+    data_source1:
+      name: "legacy_system"
+      db_type: "postgresql"
+      host: "legacy-db.example.com"
+      port: 5432
+      database: "finance"
+      username: "finance_user"
+      password: "secure_password"
+      sql_query: |
+        SELECT 
+          account_id,
+          account_name,
+          balance,
+          interest_earned,
+          last_transaction_date
+        FROM accounts
+        WHERE account_date = '2023-12-01'
+
+    data_source2:
+      name: "new_system"
+      db_type: "postgresql"
+      host: "new-db.example.com"
+      port: 5432
+      database: "finance"
+      username: "finance_user"
+      password: "secure_password"
+      sql_query: |
+        SELECT 
+          account_id,
+          account_name,
+          balance,
+          interest_earned,
+          last_transaction_date
+        FROM accounts
+        WHERE account_date = '2023-12-01'
+
+    join_columns: ["account_id"]
+
+    tolerance:
+      balance: 0.01           # $0.01 tolerance for balance
+      interest_earned: 0.001  # $0.001 tolerance for interest
+
+    output_dir: "output/financial_reconciliation"
+    log_file: "financial_reconciliation.log"
+    generate_full_csv: true
+    generate_diff_csv: true
+    generate_summary: true
+    validate_duplicates: true
+
+  # Job 3: Sales data comparison with composite key
+  sales_comparison:
+    data_source1:
+      name: "source_system"
+      db_type: "mysql"
+      host: "sales-db.example.com"
+      port: 3306
+      database: "sales"
+      username: "sales_user"
+      password: "secure_password"
+      sql_query: |
+        SELECT 
+          store_id,
+          product_id,
+          transaction_date,
+          quantity,
+          unit_price,
+          total_amount,
+          discount
+        FROM daily_sales
+        WHERE transaction_date = '2023-12-01'
+
+    data_source2:
+      name: "warehouse_system"
+      db_type: "mysql"
+      host: "warehouse-db.example.com"
+      port: 3306
+      database: "warehouse"
+      username: "warehouse_user"
+      password: "secure_password"
+      sql_query: |
+        SELECT 
+          store_id,
+          product_id,
+          transaction_date,
+          quantity,
+          unit_price,
+          total_amount,
+          discount
+        FROM sales_summary
+        WHERE transaction_date = '2023-12-01'
+
+    # Composite key
+    join_columns:
+      - "store_id"
+      - "product_id"
+      - "transaction_date"
+
+    # Compare specific columns
+    comparing_columns:
+      - "quantity"
+      - "unit_price"
+      - "total_amount"
+      - "discount"
+
+    tolerance:
+      unit_price: 0.01
+      total_amount: 0.01
+      discount: 0.01
+
+    output_dir: "output/sales_comparison"
+    log_file: "sales_comparison.log"
+    generate_full_csv: true
+    generate_diff_csv: true
+    generate_summary: true
+    validate_duplicates: true
+
+  # Job 4: Cross-database type comparison (MySQL vs PostgreSQL)
+  cross_db_comparison:
+    data_source1:
+      name: "mysql_source"
+      db_type: "mysql"
+      host: "mysql-server.example.com"
+      port: 3306
+      database: "reporting"
+      username: "report_user"
+      password: "secure_password"
+      sql_query: |
+        SELECT 
+          employee_id,
+          first_name,
+          last_name,
+          department,
+          salary,
+          hire_date
+        FROM employees
+
+    data_source2:
+      name: "postgres_source"
+      db_type: "postgresql"
+      host: "postgres-server.example.com"
+      port: 5432
+      database: "hr_system"
+      username: "hr_user"
+      password: "secure_password"
+      sql_query: |
+        SELECT 
+          employee_id,
+          first_name,
+          last_name,
+          department,
+          salary,
+          hire_date
+        FROM staff
+
+    join_columns: ["employee_id"]
+
+    output_dir: "output/cross_db_comparison"
+    log_file: "cross_db_comparison.log"
+    generate_full_csv: true
+    generate_diff_csv: true
+    generate_summary: true
+    validate_duplicates: true
+
+  # Job 5: SQLite comparison (useful for testing)
+  sqlite_test:
+    data_source1:
+      name: "before_update"
+      db_type: "sqlite"
+      host: ""  # Not used for SQLite
+      port: 0   # Not used for SQLite
+      database: "data/before.db"  # File path
+      username: ""  # Not used for SQLite
+      password: ""  # Not used for SQLite
+      sql_query: "SELECT id, name, value, status FROM records"
+
+    data_source2:
+      name: "after_update"
+      db_type: "sqlite"
+      host: ""
+      port: 0
+      database: "data/after.db"
+      username: ""
+      password: ""
+      sql_query: "SELECT id, name, value, status FROM records"
+
+    join_columns: ["id"]
+
+    output_dir: "output/sqlite_test"
+    log_file: "sqlite_test.log"
+    generate_full_csv: true
+    generate_diff_csv: true
+    generate_summary: true
+    validate_duplicates: true
+
+  # Job 6: Differences-only comparison
+  inventory_check:
+    data_source1:
+      name: "current_inventory"
+      db_type: "mysql"
+      host: "inventory-db.example.com"
+      port: 3306
+      database: "inventory"
+      username: "inv_user"
+      password: "secure_password"
+      sql_query: |
+        SELECT 
+          sku,
+          product_name,
+          quantity_on_hand,
+          quantity_reserved,
+          warehouse_location
+        FROM inventory_current
+
+    data_source2:
+      name: "expected_inventory"
+      db_type: "mysql"
+      host: "inventory-db.example.com"
+      port: 3306
+      database: "inventory"
+      username: "inv_user"
+      password: "secure_password"
+      sql_query: |
+        SELECT 
+          sku,
+          product_name,
+          quantity_on_hand,
+          quantity_reserved,
+          warehouse_location
+        FROM inventory_expected
+
+    join_columns: ["sku"]
+
+    tolerance:
+      quantity_on_hand: 1  # Allow difference of 1 unit
+      quantity_reserved: 1
+
+    output_dir: "output/inventory_check"
+    log_file: "inventory_check.log"
+
+    # Only generate differences report
+    generate_full_csv: false
+    generate_diff_csv: true
+    generate_summary: true
+    validate_duplicates: true
+
